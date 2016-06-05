@@ -1,0 +1,19 @@
+{
+  "name": "betahaus-sofia-office-manager-api",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: not implemented\" && exit 1"
+  },
+  "engines": {
+    "node": "6.x"
+  },
+  "dependencies": {
+    "dotenv": "2.0.0",
+    "firebase": "3.0.3",
+    "moment": "2.13.0",
+    "node-slack": "0.0.7"
+  }
+}
