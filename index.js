@@ -18,6 +18,7 @@ server.listen(port, () => {
 });
 
 // Firebase + Slack
+const { parallel } = require('async');
 const firebase = require('firebase');
 const moment = require('moment');
 const Slack = require('node-slack');
@@ -41,55 +42,56 @@ function initializeFirebaseApp() {
 function watchForSupplyRequests(objectKeys) {
   const db = firebase.database();
 
-  db.ref('rooms').on('child_added', (roomSnapshot) => {
-    roomSnapshot.child('supplies').forEach((roomSupplySnapshot) => {
-      db.ref(`supplies/${roomSupplySnapshot.key}`).on('value', (supplySnapshot) => {
-        db.ref('requests')
-          .orderByChild('room_supply')
-          .equalTo(`${roomSnapshot.key}_${supplySnapshot.key}`)
-          .limitToLast(1)
-          .on('child_added', (requestSnapshot) => {
-            const request = requestSnapshot.val();
+  db.ref('roomSupply').on('child_added', (roomSupplyChildSnapshot) => {
+    db.ref(`roomSupply/${roomSupplyChildSnapshot.key}`).on('value', (roomSupplySnapshot) => {
+      const roomSupply = roomSupplySnapshot.val();
+      if (!roomSupply.requested) return;
 
-            // Check if a message has been sent recently
-            db.ref(`messages/${request.room_supply}/delivered`).once('value', (messageDeliveredSnapshot) => {
-              const delivered = messageDeliveredSnapshot.val();
-              const cooldown = parseInt(env.SLACK_MESSAGE_COOLDOWN_IN_MINUTES, 10) * 60 * 1e3;
-              if (request.date - delivered < cooldown) return;
+      // Check if a message has been sent recently
+      const cooldown = parseInt(env.SLACK_MESSAGE_COOLDOWN_IN_MINUTES, 10) * 60 * 1e3;
+      if (roomSupply.requested - roomSupply.notified < cooldown) return;
 
-              const supply = supplySnapshot.val();
-              const room = roomSnapshot.val();
+      parallel({
+        room(next) {
+          db.ref(`rooms/${roomSupply.room}`).once('value', (roomSnapshot) => next(null, roomSnapshot.val()));
+        },
+        supply(next) {
+          db.ref(`supplies/${roomSupply.supply}`).once('value', (supplySnapshot) => next(null, supplySnapshot.val()));
+        }
+      }, (error, results) => {
+        if (error) return console.error(error);
 
-              const timestamp = Math.min(request.date, Date.now());
-              const timeago = moment(timestamp).fromNow();
-
-              const attachment = {
-                color: 'warning',
-                fallback: `${supply.name} requested in ${room.name} ${timeago}`,
-                text: `*${supply.name}* requested in *${room.name}* _${timeago}_`,
-                mrkdwn_in: ['text']
-              };
-
-              if (supply.imageUrl) {
-                attachment.thumb_url = supply.imageUrl;
-              }
-
-              slack.send({
-                attachments: [attachment],
-                icon_url: env.SLACK_ICON_URL,
-                // Send message without text:
-                // https://github.com/xoxco/node-slack/issues/24
-                text: { toString: () => '' }
-              }).then(() => {
-                db.ref(`messages/${request.room_supply}`).update({
-                  delivered: firebase.database.ServerValue.TIMESTAMP
-                });
-              }).catch((error) => {
-                console.log(error)
-              });
-            });
+        const { room, supply } = results;
+        const timestamp = Math.min(roomSupply.requested, Date.now());
+        sendSupplyRequestNotificationToSlack(room, supply, timestamp)
+          .then(() => {
+            db.ref(`roomSupply/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
+          }).catch((error) => {
+            console.error(error);
           });
       });
     });
+  });
+}
+
+function sendSupplyRequestNotificationToSlack(room, supply, timestamp) {
+  const timeago = moment(timestamp).fromNow();
+  const attachment = {
+    color: 'warning',
+    fallback: `${supply.name} requested in ${room.name} ${timeago}`,
+    text: `*${supply.name}* requested in *${room.name}* _${timeago}_`,
+    mrkdwn_in: ['text']
+  };
+
+  if (supply.imageUrl) {
+    attachment.thumb_url = supply.imageUrl;
+  }
+
+  return slack.send({
+    attachments: [attachment],
+    icon_url: env.SLACK_ICON_URL,
+    // Send message without text:
+    // https://github.com/xoxco/node-slack/issues/24
+    text: { toString: () => '' }
   });
 }
