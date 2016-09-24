@@ -42,8 +42,8 @@ function initializeFirebaseApp() {
 function watchForSupplyRequests(objectKeys) {
   const db = firebase.database();
 
-  db.ref('roomSupply').on('child_added', (roomSupplyChildSnapshot) => {
-    db.ref(`roomSupply/${roomSupplyChildSnapshot.key}`).on('value', (roomSupplySnapshot) => {
+  db.ref('roomSupplies').on('child_added', (roomSupplyChildSnapshot) => {
+    db.ref(`roomSupplies/${roomSupplyChildSnapshot.key}`).on('value', (roomSupplySnapshot) => {
       const roomSupply = roomSupplySnapshot.val();
       if (!roomSupply.requested) return;
 
@@ -65,7 +65,7 @@ function watchForSupplyRequests(objectKeys) {
         const timestamp = Math.min(roomSupply.requested, Date.now());
         sendSupplyRequestNotificationToSlack(room, supply, timestamp)
           .then(() => {
-            db.ref(`roomSupply/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
+            db.ref(`roomSupplies/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
           }).catch((error) => {
             console.error(error);
           });
