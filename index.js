@@ -53,8 +53,8 @@ function watchForSupplyRequests(objectKeys) {
         if (error) return console.error(error);
 
         const timestamp = Math.min(roomSupply.requested, Date.now());
-        sendSupplyRequestNotificationToSlack(room, supply, timestamp).catch(console.error).then(() => {
-          db.ref(`roomSupplies/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
+        db.ref(`roomSupplies/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP }).catch(console.error).then(() => {
+          sendSupplyRequestNotificationToSlack(room, supply, timestamp).catch(console.error);
         });
       });
     });
