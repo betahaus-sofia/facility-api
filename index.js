@@ -5,17 +5,8 @@ const env = process.env;
 
 // Server
 // Used for ping and Heroku's web process
-const http = require('http');
-const port = env.PORT || 3000;
-
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end(new Date().toISOString());
-});
-
-server.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+const server = require('./server');
+server.start();
 
 // Firebase + Slack
 const { parallel } = require('async');
@@ -58,17 +49,13 @@ function watchForSupplyRequests(objectKeys) {
         supply(next) {
           db.ref(`supplies/${roomSupply.supply}`).once('value', (supplySnapshot) => next(null, supplySnapshot.val()));
         }
-      }, (error, results) => {
+      }, (error, { room, supply }) => {
         if (error) return console.error(error);
 
-        const { room, supply } = results;
         const timestamp = Math.min(roomSupply.requested, Date.now());
-        sendSupplyRequestNotificationToSlack(room, supply, timestamp)
-          .then(() => {
-            db.ref(`roomSupplies/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
-          }).catch((error) => {
-            console.error(error);
-          });
+        sendSupplyRequestNotificationToSlack(room, supply, timestamp).catch(console.error).then(() => {
+          db.ref(`roomSupplies/${roomSupplySnapshot.key}`).update({ notified: firebase.database.ServerValue.TIMESTAMP });
+        });
       });
     });
   });
