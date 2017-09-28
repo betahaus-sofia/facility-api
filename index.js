@@ -10,7 +10,7 @@ server.start();
 
 // Firebase + Slack
 const { parallel } = require('async');
-const firebase = require('firebase');
+const firebase = require('firebase-admin');
 const moment = require('moment');
 const Slack = require('node-slack');
 const slack = new Slack(env.SLACK_WEBHOOK_URL);
@@ -21,11 +21,11 @@ watchForSupplyRequests();
 // Functions
 function initializeFirebaseApp() {
   firebase.initializeApp({
-    serviceAccount: {
-      project_id: env.FIREBASE_SERVICE_ACCOUNT_PROJECT_ID,
-      client_email: env.FIREBASE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-      private_key: env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n')
-    },
+    credential: firebase.credential.cert({
+      projectId: env.FIREBASE_SERVICE_ACCOUNT_PROJECT_ID,
+      clientEmail: env.FIREBASE_SERVICE_ACCOUNT_CLIENT_EMAIL,
+      privateKey: env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n')
+    }),
     databaseURL: env.FIREBASE_DATABASE_URL
   });
 }
