@@ -9,7 +9,6 @@ const server = require('./server');
 server.start();
 
 // Firebase + Slack
-const { parallel } = require('async');
 const firebase = require('firebase-admin');
 const moment = require('moment');
 const Slack = require('node-slack');
@@ -24,9 +23,9 @@ function initializeFirebaseApp() {
     credential: firebase.credential.cert({
       projectId: env.FIREBASE_SERVICE_ACCOUNT_PROJECT_ID,
       clientEmail: env.FIREBASE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-      privateKey: env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n')
+      privateKey: env.FIREBASE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n'),
     }),
-    databaseURL: env.FIREBASE_DATABASE_URL
+    databaseURL: env.FIREBASE_DATABASE_URL,
   });
 }
 
@@ -42,23 +41,24 @@ function watchForSupplyRequests(objectKeys) {
       const cooldown = parseInt(env.SLACK_MESSAGE_COOLDOWN_IN_MINUTES, 10) * 60 * 1e3;
       if (roomSupply.requested - roomSupply.notified < cooldown) return;
 
-      parallel({
-        room(next) {
-          db.ref(`rooms/${roomSupply.room}`).once('value', (roomSnapshot) => next(null, roomSnapshot.val()));
-        },
-        supply(next) {
-          db.ref(`supplies/${roomSupply.supply}`).once('value', (supplySnapshot) => next(null, supplySnapshot.val()));
-        }
-      }, (error, { room, supply }) => {
-        if (error) return console.error(error);
-
-        const timestamp = Math.min(roomSupply.requested, Date.now());
-        db.ref(`roomSupplies/${roomSupplySnapshot.key}`)
-          .update({ notified: firebase.database.ServerValue.TIMESTAMP })
-          .then(() => sendSupplyRequestNotificationToSlack(room, supply, timestamp))
-          .catch(console.error)
-        ;
-      });
+      Promise.all([
+        db
+          .ref(`rooms/${roomSupply.room}`)
+          .once('value')
+          .then((roomSnapshot) => roomSnapshot.val()),
+        db
+          .ref(`supplies/${roomSupply.supply}`)
+          .once('value')
+          .then((supplySnapshot) => supplySnapshot.val()),
+      ])
+        .then(([room, supply]) => {
+          const timestamp = Math.min(roomSupply.requested, Date.now());
+          return db
+            .ref(`roomSupplies/${roomSupplySnapshot.key}`)
+            .update({ notified: firebase.database.ServerValue.TIMESTAMP })
+            .then(() => sendSupplyRequestNotificationToSlack(room, supply, timestamp));
+        })
+        .catch(console.error);
     });
   });
 }
@@ -69,7 +69,7 @@ function sendSupplyRequestNotificationToSlack(room, supply, timestamp) {
     color: 'warning',
     fallback: `${supply.name} requested in ${room.name} ${timeago}`,
     text: `*${supply.name}* requested in *${room.name}* _${timeago}_`,
-    mrkdwn_in: ['text']
+    mrkdwn_in: ['text'],
   };
 
   if (supply.imageUrl) {
@@ -81,6 +81,6 @@ function sendSupplyRequestNotificationToSlack(room, supply, timestamp) {
     icon_url: env.SLACK_ICON_URL,
     // Send message without text:
     // https://github.com/xoxco/node-slack/issues/24
-    text: { toString: () => '' }
+    text: { toString: () => '' },
   });
 }
